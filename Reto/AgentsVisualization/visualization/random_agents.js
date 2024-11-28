@@ -460,27 +460,6 @@ async function getAgents() {
   }
 }
 
-
-/*
- * Retrieves the current positions of all obstacles from the agent server.
-
-async function getObstacles() {
-  try {
-    let response = await fetch(agent_server_uri + "getObstacles");
-
-    if (response.ok) {
-      let result = await response.json();
-      for (const obstacle of result.positions) {
-        const newObstacle = new Object3D(obstacle.id, [obstacle.x, obstacle.y, obstacle.z]);
-        obstacles.push(newObstacle);
-      }
-      console.log("Obstacles:", obstacles);
-    }
-  } catch (error) {
-    console.log(error);
-  }
-}
- */
 /*
  * Updates the agent positions by sending a request to the agent server.
  */
@@ -703,56 +682,82 @@ function generateBlueCubesFromHashTags(positions, size) {
   positions.forEach(({ x, z }) => {
     const baseX = x * size;
     const baseZ = z * size;
-    const height = size * (2 + Math.random() * 3); // Altura variable entre 2x y 5x del tamaño base
+    const height = size * (2 + Math.random() * 3); // Height variable between 2x and 5x of base size
     
-    // Agregar vértices del cubo
+    // Generate a random color for the building
+    const buildingColor = [Math.random(), Math.random(), Math.random(), 1]; // Random RGB + alpha
+
+    // Add vertices of the cube
     vertices.push(
-      baseX - size / 2, 0, baseZ - size / 2,  // Inferior izquierda frente
-      baseX + size / 2, 0, baseZ - size / 2,  // Inferior derecha frente
-      baseX + size / 2, height, baseZ - size / 2,  // Superior derecha frente
-      baseX - size / 2, height, baseZ - size / 2,  // Superior izquierda frente
-    
-      baseX - size / 2, 0, baseZ + size / 2,  // Inferior izquierda atrás
-      baseX + size / 2, 0, baseZ + size / 2,  // Inferior derecha atrás
-      baseX + size / 2, height, baseZ + size / 2,  // Superior derecha atrás
-      baseX - size / 2, height, baseZ + size / 2   // Superior izquierda atrás
+      baseX - size / 2, 0, baseZ - size / 2,  // Bottom-left front
+      baseX + size / 2, 0, baseZ - size / 2,  // Bottom-right front
+      baseX + size / 2, height, baseZ - size / 2,  // Top-right front
+      baseX - size / 2, height, baseZ - size / 2,  // Top-left front
+      
+      baseX - size / 2, 0, baseZ + size / 2,  // Bottom-left back
+      baseX + size / 2, 0, baseZ + size / 2,  // Bottom-right back
+      baseX + size / 2, height, baseZ + size / 2,  // Top-right back
+      baseX - size / 2, height, baseZ + size / 2   // Top-left back
     );
 
-    // Agregar colores (azul)
+    // Add colors for all vertices of the cube
     for (let i = 0; i < 8; i++) {
-      if (i % 2 === 0) {
-        colors.push(0.2, 0.2, 1, 1); // Azul oscuro
-      } else {
-        colors.push(0.6, 0.6, 1, 1); // Azul claro
-      }
+      colors.push(...buildingColor); // Use the same random color for the entire building
     }
 
-    
-
-    // Agregar índices para formar los triángulos del cubo
+    // Add indices to form triangles for the cube
     const offset = vertexIndex;
     indices.push(
-      // Frente
+      // Front face
       offset, offset + 1, offset + 2,
       offset, offset + 2, offset + 3,
-      // Atrás
+      // Back face
       offset + 4, offset + 5, offset + 6,
       offset + 4, offset + 6, offset + 7,
-      // Izquierda
+      // Left face
       offset, offset + 4, offset + 7,
       offset, offset + 7, offset + 3,
-      // Derecha
+      // Right face
       offset + 1, offset + 5, offset + 6,
       offset + 1, offset + 6, offset + 2,
-      // Abajo
+      // Bottom face
       offset, offset + 1, offset + 5,
       offset, offset + 5, offset + 4,
-      // Arriba
+      // Top face
       offset + 3, offset + 2, offset + 6,
       offset + 3, offset + 6, offset + 7
     );
 
     vertexIndex += 8;
+
+    // Add windows (rectangles) on the front face
+    const windowHeight = height / 10; // Height of each window
+    const windowWidth = size / 6; // Width of each window
+    const numWindows = Math.floor(height / (windowHeight * 1.5)); // Number of rows of windows
+
+    for (let i = 0; i < numWindows; i++) {
+      const windowBottom = i * windowHeight * 1.5 + windowHeight / 2;
+      const windowLeft = baseX - size / 3;
+
+      vertices.push(
+        windowLeft, windowBottom, baseZ - size / 2 + 0.01,  // Bottom-left of window
+        windowLeft + windowWidth, windowBottom, baseZ - size / 2 + 0.01,  // Bottom-right of window
+        windowLeft + windowWidth, windowBottom + windowHeight, baseZ - size / 2 + 0.01,  // Top-right of window
+        windowLeft, windowBottom + windowHeight, baseZ - size / 2 + 0.01  // Top-left of window
+      );
+
+      // Always use blue for the windows
+      for (let j = 0; j < 4; j++) {
+        colors.push(0, 0, 1, 1); // Solid blue
+      }
+
+      indices.push(
+        vertexIndex, vertexIndex + 1, vertexIndex + 2, // Triangle 1
+        vertexIndex, vertexIndex + 2, vertexIndex + 3  // Triangle 2
+      );
+
+      vertexIndex += 4; // Move to the next set of vertices
+    }
   });
 
   return {
@@ -761,6 +766,9 @@ function generateBlueCubesFromHashTags(positions, size) {
     indices: { numComponents: 3, data: indices }
   };
 }
+
+
+
 
 function getHashTag(fileContent) {
   const positions = [];
@@ -1019,51 +1027,53 @@ function setupUI() {
             cameraPosition.z = value
         });
 }
-
 function generateData(size) {
-  const carLength = size * 2.5; // Largo del coche
-  const carWidth = size * 1.2; // Ancho del coche
-  const carHeight = size * 0.6; // Altura de la carrocería
-  const cabinHeight = size * 0.4; // Altura de la cabina
-  const wheelRadius = size * 0.3; // Tamaño de las ruedas
-  const wheelWidth = size * 0.2; // Grosor de las ruedas
+  const carLength = size * 2.5; // Length of the car
+  const carWidth = size * 1.2; // Width of the car
+  const carHeight = size * 0.6; // Height of the car body
+  const cabinHeight = size * 0.4; // Height of the cabin
+  const wheelRadius = size * 0.3; // Size of the wheels
+  const wheelWidth = size * 0.2; // Thickness of the wheels
 
   const vertices = [];
   const colors = [];
   const indices = [];
   let vertexIndex = 0;
 
-  // Carrocería
-  const bodyVertices = [
-      // Parte superior de la carrocería
-      -carWidth / 2, carHeight, -carLength / 2,
-       carWidth / 2, carHeight, -carLength / 2,
-       carWidth / 2, carHeight,  carLength / 2,
-      -carWidth / 2, carHeight,  carLength / 2,
+  // Adjust the base height to align with the ground
+  const baseHeight = wheelRadius; // Wheels touch the ground, so the base of the car starts here
 
-      // Parte inferior de la carrocería
-      -carWidth / 2, 0, -carLength / 2,
-       carWidth / 2, 0, -carLength / 2,
-       carWidth / 2, 0,  carLength / 2,
-      -carWidth / 2, 0,  carLength / 2,
+  // Car body
+  const bodyVertices = [
+    // Top of the car body
+    -carWidth / 4, baseHeight + carHeight, -carLength / 4,
+     carWidth / 4, baseHeight + carHeight, -carLength / 4,
+     carWidth / 4, baseHeight + carHeight,  carLength / 4,
+    -carWidth / 4, baseHeight + carHeight,  carLength / 4,
+
+    // Bottom of the car body
+    -carWidth / 4, baseHeight, -carLength / 4,
+     carWidth / 4, baseHeight, -carLength / 4,
+     carWidth / 4, baseHeight,  carLength / 4,
+    -carWidth / 4, baseHeight,  carLength / 4,
   ];
 
   const bodyColors = [
-      // Colores de la carrocería (rojo)
-      1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
-      1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1
+    // Colors for the car body (red)
+    1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+    1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1
   ];
 
   const bodyIndices = [
-      // Parte superior
-      0, 1, 2, 0, 2, 3,
-      // Parte inferior
-      4, 5, 6, 4, 6, 7,
-      // Laterales
-      0, 1, 5, 0, 5, 4,
-      1, 2, 6, 1, 6, 5,
-      2, 3, 7, 2, 7, 6,
-      3, 0, 4, 3, 4, 7
+    // Top face
+    0, 1, 2, 0, 2, 3,
+    // Bottom face
+    4, 5, 6, 4, 6, 7,
+    // Sides
+    0, 1, 5, 0, 5, 4,
+    1, 2, 6, 1, 6, 5,
+    2, 3, 7, 2, 7, 6,
+    3, 0, 4, 3, 4, 7
   ];
 
   vertices.push(...bodyVertices);
@@ -1071,21 +1081,21 @@ function generateData(size) {
   indices.push(...bodyIndices.map(index => index + vertexIndex));
   vertexIndex += 8;
 
-  // Cabina
+  // Cabin
   const cabinVertices = [
-      -carWidth / 3, carHeight + cabinHeight, -carLength / 4,
-       carWidth / 3, carHeight + cabinHeight, -carLength / 4,
-       carWidth / 3, carHeight, carLength / 4,
-      -carWidth / 3, carHeight, carLength / 4,
+    -carWidth / 3, baseHeight + carHeight + cabinHeight, -carLength / 4,
+     carWidth / 3, baseHeight + carHeight + cabinHeight, -carLength / 4,
+     carWidth / 3, baseHeight + carHeight, carLength / 4,
+    -carWidth / 3, baseHeight + carHeight, carLength / 4,
   ];
 
   const cabinColors = [
-      // Colores de la cabina (azul claro)
-      0.6, 0.8, 1, 1, 0.6, 0.8, 1, 1, 0.6, 0.8, 1, 1, 0.6, 0.8, 1, 1
+    // Colors for the cabin (light blue)
+    0.6, 0.8, 1, 1, 0.6, 0.8, 1, 1, 0.6, 0.8, 1, 1, 0.6, 0.8, 1, 1
   ];
 
   const cabinIndices = [
-      0, 1, 2, 0, 2, 3
+    0, 1, 2, 0, 2, 3
   ];
 
   vertices.push(...cabinVertices);
@@ -1093,43 +1103,56 @@ function generateData(size) {
   indices.push(...cabinIndices.map(index => index + vertexIndex));
   vertexIndex += 4;
 
-  // Ruedas
+  // Wheels
   const wheelOffsets = [
-      [-carWidth / 2, -wheelWidth / 2, -carLength / 2],
-      [carWidth / 2, -wheelWidth / 2, -carLength / 2],
-      [-carWidth / 2, -wheelWidth / 2, carLength / 2],
-      [carWidth / 2, -wheelWidth / 2, carLength / 2]
+    [-carWidth / 2, 0, -carLength / 2],
+    [carWidth / 2, 0, -carLength / 2],
+    [-carWidth / 2, 0, carLength / 2],
+    [carWidth / 2, 0, carLength / 2]
   ];
 
   wheelOffsets.forEach(([x, y, z]) => {
-      const wheelVertices = [
-          x - wheelRadius, y, z - wheelRadius,
-          x + wheelRadius, y, z - wheelRadius,
-          x + wheelRadius, y, z + wheelRadius,
-          x - wheelRadius, y, z + wheelRadius
-      ];
+    const wheelVertices = [
+      x - wheelRadius, y, z - wheelRadius,
+      x + wheelRadius, y, z - wheelRadius,
+      x + wheelRadius, y + wheelWidth, z - wheelRadius,
+      x - wheelRadius, y + wheelWidth, z - wheelRadius,
 
-      const wheelColors = [
-          // Colores de las ruedas (negro)
-          0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1
-      ];
+      x - wheelRadius, y, z + wheelRadius,
+      x + wheelRadius, y, z + wheelRadius,
+      x + wheelRadius, y + wheelWidth, z + wheelRadius,
+      x - wheelRadius, y + wheelWidth, z + wheelRadius
+    ];
 
-      const wheelIndices = [
-          0, 1, 2, 0, 2, 3
-      ];
+    const wheelColors = [
+      // Colors for the wheels (black)
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1
+    ];
 
-      vertices.push(...wheelVertices);
-      colors.push(...wheelColors);
-      indices.push(...wheelIndices.map(index => index + vertexIndex));
-      vertexIndex += 4;
+    const wheelIndices = [
+      0, 1, 2, 0, 2, 3,
+      4, 5, 6, 4, 6, 7,
+      0, 1, 5, 0, 5, 4,
+      2, 3, 7, 2, 7, 6,
+      1, 2, 6, 1, 6, 5,
+      0, 3, 7, 0, 7, 4
+    ];
+
+    vertices.push(...wheelVertices);
+    colors.push(...wheelColors);
+    indices.push(...wheelIndices.map(index => index + vertexIndex));
+    vertexIndex += 8;
   });
 
   return {
-      a_position: { numComponents: 3, data: vertices },
-      a_color: { numComponents: 4, data: colors },
-      indices: { numComponents: 3, data: indices }
+    a_position: { numComponents: 3, data: vertices },
+    a_color: { numComponents: 4, data: colors },
+    indices: { numComponents: 3, data: indices }
   };
 }
+
+
 
 function generateObstacleData(size){
 
