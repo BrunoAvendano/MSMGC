@@ -4,44 +4,42 @@ from randomAgents.model import PathfindingModel
 from randomAgents.agent import PathfindingAgent, ObstacleAgent, TrafficLightAgent
 import traceback
 
-# Ruta del archivo de mapa
+# Path to map file
 file_path = "2022_base.txt"
 
-# Variables globales
+# Global variables
 number_agents = 10
 width = 28
 height = 28
 pathfindingModel = None
 currentStep = 0
 map_elements = {}
+agents_completed = 0  # Counter for agents that reach their destination
 
 # Flask app
 app = Flask("Pathfinding Agents Example")
 CORS(app)
 
-# Función para leer el archivo de mapa
+# Function to load the map
 def load_map(file_path):
-    """Carga el mapa desde un archivo."""
+    """Loads the map from a file."""
     try:
         with open(file_path, 'r') as f:
             map_data = [list(line.strip()) for line in f.readlines()]
         return map_data
     except Exception as e:
+        print(f"Error loading map: {e}")
         return []
 
-# Función para procesar el mapa
+# Function to process the map
 def process_map(map_data):
-    """
-    Procesa el mapa y organiza sus elementos en un diccionario.
-    :param map_data: Lista bidimensional representando el mapa.
-    :return: Diccionario con elementos categorizados (destinos, obstáculos, direcciones, semáforos, etc.).
-    """
+    """Processes the map and organizes its elements into a dictionary."""
     elements = {
-        "destinations": [],  # Celdas marcadas como 'D'
-        "obstacles": [],     # Celdas marcadas como '#'
-        "lights_S": [],      # Semáforos grandes 'S'
-        "lights_s": [],      # Semáforos pequeños 's'
-        "paths": {},         # Direcciones posibles ('>', '<', '^', 'v')
+        "destinations": [],  # Cells marked as 'D'
+        "obstacles": [],     # Cells marked as '#'
+        "lights_S": [],      # Large traffic lights 'S'
+        "lights_s": [],      # Small traffic lights 's'
+        "paths": {},         # Possible directions ('>', '<', '^', 'v')
     }
 
     for y, row in enumerate(map_data):
@@ -59,7 +57,7 @@ def process_map(map_data):
 
     return elements
 
-# Leer el mapa inicial
+# Load the initial map
 map_data = load_map(file_path)
 
 @app.route('/init', methods=['POST'])
@@ -73,49 +71,65 @@ def initModel():
         height = int(request.json.get('height'))
         currentStep = 0
 
-        map_elements = process_map(map_data)  # Procesar el mapa
+        map_elements = process_map(map_data)  # Process the map
 
         if not map_elements["destinations"]:
-            return jsonify({"message": "Error: No se encontraron destinos válidos en el mapa."}), 400
+            return jsonify({"message": "Error: No valid destinations found in the map."}), 400
 
         pathfindingModel = PathfindingModel(number_agents, width, height, map_data)
-        return jsonify({"message": "Modelo inicializado correctamente."})
+        print("Model initialized successfully.")
+        return jsonify({"message": "Model successfully initialized."})
     except Exception as e:
-        return jsonify({"message": "Error inicializando el modelo", "error": str(e)}), 500
+        print(f"Error initializing model: {traceback.format_exc()}")
+        return jsonify({"message": "Error initializing the model", "error": str(e)}), 500
 
 @app.route('/getAgents', methods=['GET'])
 @cross_origin()
 def getAgents():
     try:
         if pathfindingModel is None:
-            return jsonify({"message": "Error: El modelo no está inicializado. Usa /init primero."}), 400
+            return jsonify({"message": "Error: The model is not initialized. Use /init first."}), 400
 
-        agent_positions = [
-            {
-                "id": str(agent.unique_id),
-                "x": agent.pos[0],
-                "y": 1,
-                "z": agent.pos[1],
-                "destination": agent.destination
-            }
-            for agent in pathfindingModel.schedule.agents
-            if isinstance(agent, PathfindingAgent)
-        ]
+        print("Fetching agent positions...")
+        agent_positions = []
+        for agent in pathfindingModel.schedule.agents:
+            if isinstance(agent, PathfindingAgent):
+                print(f"Agent {agent.unique_id}: Pos {agent.pos}, Dest {agent.destination}")
+                agent_positions.append({
+                    "id": str(agent.unique_id),
+                    "x": agent.pos[0],
+                    "y": 1,  # For compatibility with 3D visualization
+                    "z": agent.pos[1],
+                    "destination": agent.destination
+                })
+
         return jsonify({'positions': agent_positions})
     except Exception as e:
-        return jsonify({"message": "Error obteniendo posiciones de agentes", "error": str(e)}), 500
+        print(f"Error getting agents: {traceback.format_exc()}")
+        return jsonify({"message": "Error retrieving agent positions", "error": str(e)}), 500
 
 @app.route('/update', methods=['GET'])
 @cross_origin()
 def updateModel():
-    global currentStep, pathfindingModel
+    global currentStep, pathfindingModel, agents_completed
     try:
         if pathfindingModel is None:
-            return jsonify({"message": "Error: El modelo no está inicializado. Usa /init primero."}), 400
+            return jsonify({"message": "Error: The model is not initialized. Use /init first."}), 400
 
+        print(f"Updating model at step {currentStep}")
+        print(f"Active agents before step: {len(pathfindingModel.schedule.agents)}")
+
+        # Debug agent states before stepping
+        for agent in pathfindingModel.schedule.agents:
+            if isinstance(agent, PathfindingAgent):
+                print(f"Agent {agent.unique_id}: Position {agent.pos}, Destination {agent.destination}")
+
+        # Step the model
         pathfindingModel.step()
         currentStep += 1
+        print(f"Model stepped successfully to step {currentStep}")
 
+        # Collect updated agent positions
         agent_positions = [
             {
                 "id": str(agent.unique_id),
@@ -127,17 +141,17 @@ def updateModel():
             if isinstance(agent, PathfindingAgent)
         ]
 
-        agents_to_remove = [
-            agent for agent in pathfindingModel.schedule.agents
-            if isinstance(agent, PathfindingAgent) and agent.pos == agent.destination
-        ]
-        for agent in agents_to_remove:
-            pathfindingModel.grid.remove_agent(agent)
-            pathfindingModel.schedule.remove(agent)
-
-        return jsonify({'message': f'Model updated to step {currentStep}.', 'currentStep': currentStep, 'agents': agent_positions})
+        print(f"Active agents after step: {len(pathfindingModel.schedule.agents)}")
+        return jsonify({
+            'message': f'Model updated to step {currentStep}.',
+            'currentStep': currentStep,
+            'agents': agent_positions,
+            'agents_completed': agents_completed,
+            'active_agents': len(pathfindingModel.schedule.agents)
+        })
     except Exception as e:
-        return jsonify({"message": "Error actualizando el modelo", "error": str(e)}), 500
+        print(f"Error during update: {traceback.format_exc()}")
+        return jsonify({"message": "Error updating the model", "error": str(e)}), 500
 
 @app.route('/addAgent', methods=['POST'])
 @cross_origin()
@@ -145,13 +159,13 @@ def addAgent():
     global pathfindingModel
     try:
         if pathfindingModel is None:
-            return jsonify({"message": "Error: El modelo no está inicializado. Usa /init primero."}), 400
+            return jsonify({"message": "Error: The model is not initialized. Use /init first."}), 400
 
         corners = pathfindingModel.get_valid_corners()
         destinations = pathfindingModel.get_destinations()
 
         if not destinations:
-            return jsonify({"message": "Error: No se encontraron destinos válidos para el nuevo agente."}), 400
+            return jsonify({"message": "Error: No valid destinations found for the new agent."}), 400
 
         while True:
             start_position = pathfindingModel.random.choice(corners)
@@ -164,9 +178,11 @@ def addAgent():
         pathfindingModel.schedule.add(new_agent)
         pathfindingModel.grid.place_agent(new_agent, start_position)
 
-        return jsonify({"message": f"Nuevo agente {new_agent.unique_id} creado.", "id": new_agent.unique_id}), 200
+        print(f"New agent {new_agent.unique_id} created at {start_position} with destination {destination}.")
+        return jsonify({"message": f"New agent {new_agent.unique_id} created.", "id": new_agent.unique_id}), 200
     except Exception as e:
-        return jsonify({"message": "Error al crear un nuevo agente", "error": str(e)}), 500
+        print(f"Error adding agent: {traceback.format_exc()}")
+        return jsonify({"message": "Error creating a new agent", "error": str(e)}), 500
 
 @app.route('/getMap', methods=['GET'])
 @cross_origin()
@@ -174,12 +190,13 @@ def getMap():
     try:
         return jsonify({"map": ["".join(row) for row in map_data]})
     except Exception as e:
-        return jsonify({"message": "Error obteniendo el mapa", "error": str(e)}), 500
+        print(f"Error getting map: {traceback.format_exc()}")
+        return jsonify({"message": "Error retrieving the map", "error": str(e)}), 500
 
 @app.route('/gridStatus', methods=['GET'])
 @cross_origin()
 def gridStatus():
-    """Devuelve el estado actual de la grid para depuración."""
+    """Returns the current state of the grid for debugging."""
     try:
         grid_data = {
             (x, y): [type(obj).__name__ for obj in pathfindingModel.grid.get_cell_list_contents((x, y))]
@@ -188,7 +205,8 @@ def gridStatus():
         }
         return jsonify({'grid': grid_data})
     except Exception as e:
-        return jsonify({"message": "Error obteniendo el estado de la grid", "error": str(e)}), 500
+        print(f"Error getting grid status: {traceback.format_exc()}")
+        return jsonify({"message": "Error retrieving grid status", "error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host="localhost", port=8585, debug=False)

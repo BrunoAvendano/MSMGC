@@ -3,6 +3,7 @@
 import * as twgl from 'twgl.js';
 import GUI from 'lil-gui';
 
+
 // Ruta del archivo de texto
 const filePath = "2022_base.txt";
 
@@ -64,6 +65,8 @@ let blueCubesBufferInfo;
 // Initialize the frame count
 let frameCount = 0;
 
+
+
 // Define the data object
 let data = {
   NAgents: 1,
@@ -72,10 +75,32 @@ let data = {
   file_path: filePath // Agregado para enviar la ruta del archivo al servidor
 };
 
+let textTexture;
+
 // Main function to initialize and run the application
 async function main() {
   const canvas = document.querySelector("canvas");
   gl = canvas.getContext("webgl2");
+
+  if (!gl) {
+    console.error("WebGL2 no está disponible en este navegador.");
+    return;
+  }
+
+  // Crear la textura de texto
+  let textCanvas = document.createElement("canvas");
+  textCanvas.id = "textCanvas";
+  document.body.appendChild(textCanvas);
+
+  textTexture = twgl.createTexture(gl, {
+    src: textCanvas,
+    min: gl.LINEAR,
+    mag: gl.LINEAR,
+    wrap: gl.CLAMP_TO_EDGE,
+  });
+
+  // Crear la información del programa usando los shaders
+  programInfo = twgl.createProgramInfo(gl, [vsGLSL, fsGLSL]);
 
   // Crear la información del programa usando los shaders
   programInfo = twgl.createProgramInfo(gl, [vsGLSL, fsGLSL]);
@@ -86,8 +111,7 @@ async function main() {
     data.width = getColumnCount(fileContent) - 1;
     data.height = getRowCount(fileContent);
 
-    console.log(`Número de filas en el archivo: ${data.height}`);
-    console.log(`Número de columnas en el archivo: ${data.width}`);
+  
   } else {
     console.error("El archivo no pudo ser leído o está vacío.");
     return;
@@ -341,6 +365,7 @@ function getRedXPositions(fileContent) {
 }
 
 
+
 /*
  * Detecta las posiciones en el archivo donde hay los símbolos 's' y 'S'.
  * 
@@ -388,7 +413,6 @@ async function initAgentsModel() {
 
     if (response.ok) {
       let result = await response.json();
-      console.log(result.message);
     }
   } catch (error) {
     console.log(error);
@@ -404,7 +428,6 @@ async function getAgents() {
 
     if (response.ok) {
       let result = await response.json();
-      console.log(result.positions);
 
       // Crear un mapa de agentes existentes
       const existingAgents = new Map(agents.map(agent => [agent.id, agent]));
@@ -428,12 +451,9 @@ async function getAgents() {
       // Eliminar agentes locales que ya no están en el servidor
       agents.forEach((agent, index) => {
         if (!serverAgentIds.has(agent.id)) {
-          console.log(`Eliminando agente obsoleto: ${agent.id}`);
           agents.splice(index, 1);
         }
       });
-
-      console.log("Agents sincronizados:", agents);
     }
   } catch (error) {
     console.log(error);
@@ -466,22 +486,27 @@ async function getObstacles() {
  */
 async function update() {
   try {
-    // Send a request to the agent server to update the agent positions
-    let response = await fetch(agent_server_uri + "update") 
+    let response = await fetch(agent_server_uri + "update");
 
-    // Check if the response was successful
-    if(response.ok){
-      // Retrieve the updated agent positions
-      await getAgents()
-      // Log a message indicating that the agents have been updated
-      console.log("Updated agents")
+    if (response.ok) {
+      let result = await response.json();
+
+      // Actualizar contadores
+      const activeAgents = result.active_agents;
+      const agentsCompleted = result.agents_completed;
+
+      // Actualizar canvas de texto
+      updateTextCanvas(activeAgents, agentsCompleted);
+
+      // Actualizar agentes en la simulación
+      await getAgents();
     }
-
   } catch (error) {
-    // Log any errors that occur during the request
-    console.log(error) 
+    console.log(error);
   }
 }
+
+
 /*
  * Genera los datos de geometría para los segmentos de piso en las posiciones dadas.
  * 
@@ -545,6 +570,27 @@ function drawBlueCubes(vao, bufferInfo, viewProjectionMatrix) {
   twgl.drawBufferInfo(gl, bufferInfo);
 }
 
+function updateTextCanvas(activeAgents, agentsCompleted) {
+  const textCanvas = document.getElementById("textCanvas");
+  const ctx = textCanvas.getContext("2d");
+
+  // Establecer tamaño del canvas
+  textCanvas.width = 512;
+  textCanvas.height = 128;
+
+  // Limpiar canvas
+  ctx.clearRect(0, 0, textCanvas.width, textCanvas.height);
+
+  // Configurar estilos de texto
+  ctx.fillStyle = "white";
+  ctx.font = "bold 48px Arial";
+  ctx.textAlign = "left";
+
+  // Dibujar texto
+  ctx.fillText(`Active Agents: ${activeAgents}`, 10, 50);
+  ctx.fillText(`Completed Agents: ${agentsCompleted}`, 10, 110);
+  
+}
 
 
 /*
@@ -623,6 +669,24 @@ function getSpecialPositions(fileContent) {
 
   return positions;
 }
+
+function drawTextOverlay(texture, viewProjectionMatrix) {
+  const planeMatrix = twgl.m4.identity();
+  twgl.m4.translate(planeMatrix, [0, 10, -5], planeMatrix); // Cambiar posición
+  twgl.m4.scale(planeMatrix, [5, 2, 1], planeMatrix); // Escala del plano
+
+  const uniforms = {
+    u_matrix: twgl.m4.multiply(viewProjectionMatrix, planeMatrix),
+    u_texture: texture,
+  };
+
+  // Dibujar el plano con la textura del texto
+  twgl.setUniforms(programInfo, uniforms);
+  twgl.drawBufferInfo(gl, twgl.primitives.createPlaneBufferInfo(gl, 1, 1));
+}
+
+
+
 /*
  * Genera los datos de geometría para los cubos azules en las posiciones de hashtags (#).
  *
@@ -737,10 +801,10 @@ async function drawScene(
   floorBufferInfo,
   blueCubesVao,
   blueCubesBufferInfo,
-  zebraVao,         // Añade zebraVao
+  zebraVao,
   zebraBufferInfo,
-  redXVao,         // Añade este parámetro
-  redXBufferInfo 
+  redXVao,
+  redXBufferInfo
 ) {
   twgl.resizeCanvasToDisplaySize(gl.canvas);
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -750,25 +814,26 @@ async function drawScene(
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   gl.useProgram(programInfo.program);
+
   const viewProjectionMatrix = setupWorldView(gl);
 
-  // En la función `drawScene`:
   drawBlueCubes(blueCubesVao, blueCubesBufferInfo, viewProjectionMatrix);
   drawBlueCubes(zebraVao, zebraBufferInfo, viewProjectionMatrix);
   drawBlueCubes(redXVao, redXBufferInfo, viewProjectionMatrix);
-
-
-  drawFloor(floorVao, floorBufferInfo, viewProjectionMatrix); // Dibuja el piso
+  drawFloor(floorVao, floorBufferInfo, viewProjectionMatrix);
   drawAgents(1, agentsVao, agentsBufferInfo, viewProjectionMatrix);
   drawObstacles(1, obstaclesVao, obstaclesBufferInfo, viewProjectionMatrix);
 
-  frameCount++;
+  // Actualizar textura de texto
+  twgl.setTextureFromElement(gl, textTexture, document.getElementById("textCanvas"));
 
+  // Dibujar el contador en un plano 2D en la escena
+  drawTextOverlay(textTexture, viewProjectionMatrix);
+
+  frameCount++;
   if (frameCount % 30 === 0) {
     await update();
   }
-// No reiniciar `frameCount` aquí
-
 
   requestAnimationFrame(() =>
     drawScene(
@@ -782,13 +847,14 @@ async function drawScene(
       floorBufferInfo,
       blueCubesVao,
       blueCubesBufferInfo,
-      zebraVao,         // Añade zebraVao
+      zebraVao,
       zebraBufferInfo,
-      redXVao,         // Añade este parámetro
-      redXBufferInfo 
+      redXVao,
+      redXBufferInfo
     )
   );
 }
+
 
 
 /*
@@ -914,7 +980,6 @@ async function addAgent() {
 
     if (response.ok) {
       let result = await response.json();
-      console.log(result.message);
       // Después de agregar un nuevo agente, obtenemos la lista actualizada
       await getAgents();
     }
