@@ -1046,16 +1046,16 @@ function generateData(size) {
   // Car body
   const bodyVertices = [
     // Top of the car body
-    -carWidth / 4, baseHeight + carHeight, -carLength / 4,
-     carWidth / 4, baseHeight + carHeight, -carLength / 4,
-     carWidth / 4, baseHeight + carHeight,  carLength / 4,
-    -carWidth / 4, baseHeight + carHeight,  carLength / 4,
+    -carWidth / 2, baseHeight + carHeight, -carLength / 2,
+     carWidth / 2, baseHeight + carHeight, -carLength / 2,
+     carWidth / 2, baseHeight + carHeight,  carLength / 2,
+    -carWidth / 2, baseHeight + carHeight,  carLength / 2,
 
     // Bottom of the car body
-    -carWidth / 4, baseHeight, -carLength / 4,
-     carWidth / 4, baseHeight, -carLength / 4,
-     carWidth / 4, baseHeight,  carLength / 4,
-    -carWidth / 4, baseHeight,  carLength / 4,
+    -carWidth / 2, baseHeight, -carLength / 2,
+     carWidth / 2, baseHeight, -carLength / 2,
+     carWidth / 2, baseHeight,  carLength / 2,
+    -carWidth / 2, baseHeight,  carLength / 2,
   ];
 
   const bodyColors = [
